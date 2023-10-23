@@ -1,0 +1,9 @@
+[package]
+name = "imezx/ballservice"
+version = "1.0.0"
+registry = "https://github.com/UpliftGames/wally-index"
+realm = "shared"
+license = "MIT"
+description = "BallService is a Module with Blade-Ball Psychic based."
+
+[dependencies]
