@@ -1,5 +1,5 @@
 -- BallService Module by Eternity_Devs
--- version 1.0
+-- version 1.1
 --!strict
 local BallService = {}
 BallService.__index = BallService
@@ -12,10 +12,11 @@ BallService.Settings = {
 	DefaultSize = Vector3.new(1.75, 1.75, 1.75),
 	DefaultPos = Vector3.new(0, 0, 0),
 	DefaultSpeed = 1, -- default: 1
-	MaxTweenSpeed = 0.1, -- default: 0.1
+	MinTweenSpeed = 0.1, -- default: 0.1
+	MaxTweenSpeed = 8, -- default: 8
 	ThrottlingSpeed = 2.5, -- default: 2.5
 	ThrottlingDelta = 4, -- default: 4
-	MinimumPlayers = 1, -- Minimum Players (default: 1)
+	MinimumPlayers = 2, -- Minimum Players (default: 2)
 	EasingDirection = Enum.EasingDirection.InOut,
 	EasingStyle = Enum.EasingStyle.Linear,
 	MinMagnitudeToKill = 2.5, -- Minimum Magnitude Distance between Ball Object with Target Object to Kill Target
@@ -26,10 +27,19 @@ BallService.Settings = {
 	Silent = false, -- default: false (make warns be silent from RunService Module)
 	isPlaying = false, -- DO NOT CHANGE THIS (default: false)
 }
+BallService._Players = {}
+BallService.alpha = BallService.Settings.alpha
+BallService.isPlayable = false
 
 local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
 local RunService = require(script:WaitForChild("RunService"))
+local Signal = require(script:WaitForChild("Signal"))
+
+local OnStopSignal = Signal.new("OnStopSignal")
+
+BallService.OnStop = OnStopSignal
+
 local BallObject = nil
 
 -- Public
@@ -39,16 +49,16 @@ function BallService:init()
 		if not script:FindFirstChild("Ball") then
 			-- Create Default Ball Object
 			local newBall = Instance.new("Part", script)
-			newBall.Name = BallService.Settings.BallName
-			newBall.Size = BallService.Settings.DefaultSize
-			newBall.Massless = BallService.Settings.Massless
+			newBall.Name = self.Settings.BallName
+			newBall.Size = self.Settings.DefaultSize
+			newBall.Massless = self.Settings.Massless
 			newBall.CanCollide = false
 			newBall.Anchored = true
 			newBall.CastShadow = false
-			newBall.Color = BallService.Settings.DefaultColor
-			newBall.Material = BallService.Settings.Material
+			newBall.Color = self.Settings.DefaultColor
+			newBall.Material = self.Settings.Material
 			newBall.Shape = Enum.PartType.Ball
-			newBall.Position = BallService.Settings.DefaultPos
+			newBall.Position = self.Settings.DefaultPos
 
 			-- Create Default Ball Settings Objects
 			Instance.new("NumberValue", newBall).Name = "Speed"
@@ -56,13 +66,13 @@ function BallService:init()
 			Instance.new("IntValue", newBall)
 			
 			BallObject = script:WaitForChild("Ball"):Clone()
-			BallObject.Parent = BallService.Settings.BallPlace
+			BallObject.Parent = self.Settings.BallPlace
 		end
-	elseif not BallService.Settings.BallPlace:FindFirstChild(BallService.Settings.BallName) then
-		repeat task.wait() until BallService.Settings.BallPlace:FindFirstChild(BallService.Settings.BallName) -- wait from server initialize
-		BallObject = BallService.Settings.BallPlace:WaitForChild(BallService.Settings.BallName, 5) -- timeout 5 seconds
+		if BallObject:WaitForChild("Speed").Value <= 0 then BallObject:WaitForChild("Speed").Value = self.Settings.DefaultSpeed end
+	elseif not self.Settings.BallPlace:FindFirstChild(self.Settings.BallName) then
+		repeat task.wait() until self.Settings.BallPlace:FindFirstChild(self.Settings.BallName) -- wait from server initialize
+		BallObject = self.Settings.BallPlace:WaitForChild(self.Settings.BallName, 5) -- timeout 5 seconds
 	end
-	if BallObject:WaitForChild("Speed").Value <= 0 then BallObject:WaitForChild("Speed").Value = BallService.Settings.DefaultSpeed end
 end
 
 function BallService:Set(options: typeof(BallService.Settings))
@@ -75,6 +85,10 @@ function BallService:Set(options: typeof(BallService.Settings))
 			self.Settings[i] = v
 			if i == "Silent" then
 				RunService:Silent(v)
+			elseif i == "TestMode" or i == "TestDummy" then
+				self:UpdatePlayers()
+			elseif i == "alpha" then
+				self.alpha = v
 			end
 		end
 	end
@@ -86,6 +100,7 @@ function BallService:SetTarget(objectTarget: Model)
 	if not BallObject then error("Couldn't find Ball Object.", 2) end
 	if not BallObject:FindFirstChild("Target") then error("Failed to set target.", 2) end
 	BallObject:WaitForChild("Target").Value = objectTarget
+	self:UpdatePlayers()
 end
 
 function BallService:SetEasingDirection(easingDirection: Enum.EasingDirection)
@@ -114,24 +129,41 @@ function BallService:SetColor(color: Color3)
 	BallObject.Color = color
 end
 
+function BallService:UpdatePlayers()
+	table.clear(self._Players)
+	for _, plr in pairs(Players:GetPlayers()) do
+		if plr and plr.Character and not table.find(self._Players, plr.Character) then
+			table.insert(self._Players, plr.Character)
+		end
+	end
+	if self.Settings.TestMode and self.Settings.TestDummy and self.Settings.TestDummy:IsA("Model") and self.Settings.TestDummy.Parent ~= nil and not table.find(self._Players, self.Settings.TestDummy) then
+		table.insert(self._Players, self.Settings.TestDummy)
+	end
+	self.isPlayable = (#self._Players >= self.Settings.MinimumPlayers)
+end
+
 function BallService:Reset()
 	BallObject.Value.Value = 3
 	RunService:UnbindFromPostSimulation("PlayBall")
-	BallObject.Position = BallService.Settings.DefaultPos
 	BallObject.Target.Value = nil
-	BallObject.Speed.Value = BallService.Settings.DefaultSpeed
-	BallService.Settings.alpha = 5
+	BallObject.Speed.Value = self.Settings.DefaultSpeed
+	self.alpha = self.Settings.alpha
+	repeat BallObject.Position = self.Settings.DefaultPos task.wait() until BallObject.Position == self.Settings.DefaultPos
+	self:UpdatePlayers()
 	BallObject.Value.Value = 0
 end
 
 function BallService:Play()
 	if not BallObject then error("Service not initialized yet.", 2) end
+	self:UpdatePlayers()
+	if #self._Players < self.Settings.MinimumPlayers then return warn(`Not enough players (require {self.Settings.MinimumPlayers} players)`) end
 	self.Settings.isPlaying = true
 end
 
 function BallService:Stop()
 	if not BallObject then error("Service not initialized yet.", 2) end
 	self.Settings.isPlaying = false
+	OnStopSignal:Fire()
 end
 
 function BallService:IsPlaying(): boolean
@@ -143,61 +175,56 @@ function BallService:GetTarget()
 	return BallObject.Target.Value
 end
 
-function BallService:IsTargetAlive(object: Model): boolean
+function BallService:IsTargetAlive(object: any): boolean
 	if object and object:FindFirstChild("Humanoid") then return (object.Humanoid.Health > 0) end return false
 end
 
--- Internal
-
-function getTarget()
-	if BallObject then
-		if #Players:GetPlayers() > BallService.Settings.MinimumPlayers and not BallService.Settings.TestMode then
+if RunService:IsServer() then
+	-- Internal
+	function getRandom(previousObject): boolean
+		if #BallService._Players < BallService.Settings.MinimumPlayers then
+			BallService:Reset()
+			BallService:Stop()
 			return false
 		end
-		for _,plr in pairs(Players:GetPlayers()) do
-			if BallObject and plr and plr.Character and plr.Character.PrimaryPart and BallObject.Target.Value ~= plr.Character and BallService:IsTargetAlive(plr.Character) then
-				BallObject.Target.Value = plr.Character
-				return true
-			end
+		while (BallObject.Target.Value == previousObject) do
+			BallObject.Target.Value = BallService._Players[math.random(1, #BallService._Players)]
 		end
-		if BallService.Settings.TestMode and BallService.Settings.TestDummy and BallService.Settings.TestDummy:IsA("Model") then -- if TestDummy is a Model
-			BallObject.Target.Value = BallService.Settings.TestDummy
-			return true
-		end
+		return true
 	end
-	return false
-end
 
-function FollowTarget(delta: number)
-	if BallService.Settings.isPlaying and BallObject then
-		if BallObject.Target.Value and BallObject.Target.Value.PrimaryPart and BallService:IsTargetAlive(BallObject.Target.Value) then
-			if (BallObject.Position-BallObject.Target.Value.PrimaryPart.Position).Magnitude < BallService.Settings.MinMagnitudeToKill then
-				BallObject.Target.Value.Humanoid.Health -= BallService.Settings.DamageToTarget
+	function getTarget(): boolean
+		return (BallObject and getRandom(BallObject.Target.Value) or false)
+	end
+
+	function FollowTarget(delta: number)
+		if BallService.Settings.isPlaying and BallObject then
+			if BallObject.Target.Value and BallObject.Target.Value.PrimaryPart and BallService:IsTargetAlive(BallObject.Target.Value) then
+				if (BallObject.Position-BallObject.Target.Value.PrimaryPart.Position).Magnitude < BallService.Settings.MinMagnitudeToKill then
+					BallObject.Target.Value.Humanoid.Health -= BallService.Settings.DamageToTarget
+					BallService:Reset()
+					return
+				end
+				BallService.alpha += (delta/BallService.Settings.ThrottlingDelta)
+				TweenService:Create(BallObject, TweenInfo.new(math.min(BallService.Settings.MaxTweenSpeed, math.max(BallService.Settings.MinTweenSpeed, (BallService.alpha/BallObject.Speed.Value)/BallService.Settings.ThrottlingSpeed)), BallService.Settings.EasingStyle, BallService.Settings.EasingDirection), { Position = BallObject.Target.Value.PrimaryPart.Position }):Play()
+			else
 				BallService:Reset()
-				return
 			end
-			BallService.Settings.alpha += (delta/BallService.Settings.ThrottlingDelta)
-			if BallObject.Target.Value and BallObject.Target.Value.PrimaryPart then -- recheck to prevent error
-				TweenService:Create(BallObject, TweenInfo.new(math.max(BallService.Settings.MaxTweenSpeed, (BallService.Settings.alpha/BallObject.Speed.Value)/BallService.Settings.ThrottlingSpeed), BallService.Settings.EasingStyle, BallService.Settings.EasingDirection), { Position = BallObject.Target.Value.PrimaryPart.Position }):Play()
-			end
-		else
-			BallService:Reset()
 		end
 	end
+	
+	RunService.PostSimulation:Connect(function()
+		if BallService.Settings.isPlaying and BallObject then
+			if BallObject.Value.Value == 0 then
+				BallObject.Value.Value = 2
+				getTarget()
+				RunService:BindToPostSimulation("PlayBall", 1, FollowTarget)
+			elseif BallObject.Value.Value == 1 then
+				RunService:UnbindFromPostSimulation("PlayBall")
+				BallObject.Value.Value = 0
+			end
+		end
+	end)
 end
-
-RunService.PostSimulation:Connect(function()
-	if BallService.Settings.isPlaying and BallObject then
-		if BallObject.Value.Value == 0 then
-			BallObject.Value.Value = 2
-			repeat task.wait() until getTarget()
-			RunService:BindToPostSimulation("PlayBall", 1, FollowTarget)
-		end
-		if BallObject.Value.Value == 1 then
-			RunService:UnbindFromPostSimulation("PlayBall")
-			BallObject.Value.Value = 0
-		end
-	end
-end)
 
 return BallService :: typeof(BallService)
