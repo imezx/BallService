@@ -1,5 +1,5 @@
 -- BallService Module by Eternity_Devs
--- version 2.0
+-- version 2.0.1
 --!strict
 local BallService = {}
 BallService.__index = BallService
@@ -12,9 +12,13 @@ BallService.Settings = {
 	DefaultSize = Vector3.new(1.75, 1.75, 1.75),
 	DefaultPos = Vector3.new(0, 0, 0),
 	DefaultSpeed = 1, -- default: 1
+	MinTweenSpeed = 0.1, -- default: 0.1
+	MaxTweenSpeed = 8, -- default: 8
+	ThrottlingSpeed = 1, -- default: 1
+	ThrottlingDelta = 5, -- default: 5
 	MinimumPlayers = 2, -- Minimum Players (default: 2)
 	EasingDirection = Enum.EasingDirection.Out,
-	EasingStyle = Enum.EasingStyle.Cubic,
+	EasingStyle = Enum.EasingStyle.Linear,
 	MinMagnitudeToKill = 2.5, -- Minimum Magnitude Distance between Ball Object with Target Object to Kill Target
 	DamageToTarget = 100, -- default: 100
 	UseCurve = true,
@@ -22,10 +26,12 @@ BallService.Settings = {
 	MinHeightCurve = 0, -- default: 0
 	TestDummy = game:GetService("Workspace"), -- change the default with TestMode enabled.
 	TestMode = false, -- default: false (dont forget to change TestDummy if this enabled.)
+	alpha = 1, -- default: 1
 	Silent = false, -- default: false (make warns be silent from RunService Module)
 	isPlaying = false, -- DO NOT CHANGE THIS (default: false)
 }
 BallService._Players = {}
+BallService.alpha = BallService.Settings.alpha
 BallService.isPlayable = false
 BallService.PreviousPos = BallService.Settings.DefaultPos
 BallService.CurveCache = {} :: (any)
@@ -94,6 +100,8 @@ function BallService:Set(options: typeof(BallService.Settings))
 				RunService:Silent(v)
 			elseif i == "TestMode" or i == "TestDummy" then
 				self:UpdatePlayers()
+			elseif i == "alpha" then
+				self.alpha = v
 			end
 		end
 	end
@@ -156,6 +164,7 @@ function BallService:Reset()
 	RunService:UnbindFromPostSimulation("PlayBall")
 	BallObject.Target.Value = nil
 	BallObject.Speed.Value = self.Settings.DefaultSpeed
+	self.alpha = self.Settings.alpha
 	repeat BallObject.Position = self.Settings.DefaultPos task.wait() until BallObject.Position == self.Settings.DefaultPos
 	self:UpdatePlayers()
 	BallObject.Value.Value = 0
@@ -224,18 +233,23 @@ if RunService:IsServer() then
 					BallService:Reset()
 					return
 				end
-				if BallService.CurveCache and BallService.CurveCache[2] ~= nil then
-					if (BallService.CurveCache[2].TotalTime-((tick()-BallService.CurveCache[1]) % BallService.CurveCache[2].TotalTime)) <= 0.01 then
-						BallService.PreviousPos = BallObject.Position
-						BallService.CurveCache[1] = tick()
+				if BallService.Settings.UseCurve then
+					if BallService.CurveCache and BallService.CurveCache[2] ~= nil then
+						if (BallService.CurveCache[2].TotalTime-((tick()-BallService.CurveCache[1]) % BallService.CurveCache[2].TotalTime)) <= 0.01 then
+							BallService.PreviousPos = BallObject.Position
+							BallService.CurveCache[1] = tick()
+						end
+						BallService.CurveCache[2]:UpdateCurves()
+						local toPos = BallService.CurveCache[2]:Tween((tick()-BallService.CurveCache[1]) % BallService.CurveCache[2].TotalTime, BallService.Settings.EasingStyle, BallService.Settings.EasingDirection) :: Vector3
+						if toPos and BallObject.Position ~= toPos then
+							BallObject.Position = toPos
+						else
+							BallObject.Position = BallObject.Target.Value.PrimaryPart.Position
+						end
 					end
-					BallService.CurveCache[2]:UpdateCurves()
-					local toPos = BallService.CurveCache[2]:Tween((tick()-BallService.CurveCache[1]) % BallService.CurveCache[2].TotalTime, BallService.Settings.EasingStyle, BallService.Settings.EasingDirection) :: Vector3
-					if toPos and BallObject.Position ~= toPos then
-						TweenService:Create(BallObject, TweenInfo.new(0.05, BallService.Settings.EasingStyle, BallService.Settings.EasingDirection), { Position = toPos }):Play()
-					else
-						TweenService:Create(BallObject, TweenInfo.new(0.05, BallService.Settings.EasingStyle, BallService.Settings.EasingDirection), { Position = BallObject.Target.Value.PrimaryPart.Position }):Play()
-					end
+				else
+					BallService.alpha += (delta/BallService.Settings.ThrottlingDelta)
+					TweenService:Create(BallObject, TweenInfo.new(math.min(BallService.Settings.MaxTweenSpeed, math.max(BallService.Settings.MinTweenSpeed, (BallService.alpha/BallObject.Speed.Value)/BallService.Settings.ThrottlingSpeed)), BallService.Settings.EasingStyle, BallService.Settings.EasingDirection), { Position = BallObject.Target.Value.PrimaryPart.Position }):Play()
 				end
 			else
 				BallService:Reset()
@@ -253,11 +267,9 @@ if RunService:IsServer() then
 					return
 				end
 				BallService.PreviousPos = BallObject.Position
-				BallService.CurveCache[1] = tick()
 				if BallService.Settings.UseCurve then
+					BallService.CurveCache[1] = tick()
 					BallService.CurveCache[2] = FloatCurve.new({BallObject, CurveSimulation(BallObject, BallObject.Target.Value.PrimaryPart), BallObject.Target.Value.PrimaryPart}, BallObject.Speed.Value*20) :: (any)
-				else
-					BallService.CurveCache[2] = FloatCurve.new({BallObject, BallObject.Target.Value.PrimaryPart}, BallObject.Speed.Value*10) :: (any)
 				end
 				RunService:BindToPostSimulation("PlayBall", 1, FollowTarget)
 			elseif BallObject.Value.Value == 1 then
