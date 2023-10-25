@@ -1,5 +1,5 @@
 -- BallService Module by Eternity_Devs
--- version 2.0.1
+-- version 2.1.0
 --!strict
 local BallService = {}
 BallService.__index = BallService
@@ -22,6 +22,7 @@ BallService.Settings = {
 	MinMagnitudeToKill = 2.5, -- Minimum Magnitude Distance between Ball Object with Target Object to Kill Target
 	DamageToTarget = 100, -- default: 100
 	UseCurve = true,
+	CurveBoost = 20, -- default: 20, speed up curve so it dont took long
 	MaxHeightCurve = 30, -- default: 30
 	MinHeightCurve = 0, -- default: 0
 	TestDummy = game:GetService("Workspace"), -- change the default with TestMode enabled.
@@ -30,10 +31,10 @@ BallService.Settings = {
 	Silent = false, -- default: false (make warns be silent from RunService Module)
 	isPlaying = false, -- DO NOT CHANGE THIS (default: false)
 }
-BallService._Players = {}
-BallService.alpha = BallService.Settings.alpha
-BallService.isPlayable = false
-BallService.PreviousPos = BallService.Settings.DefaultPos
+BallService._Players = {} :: (any)
+BallService.alpha = BallService.Settings.alpha :: number
+BallService.isPlayable = false :: boolean
+BallService.PreviousPos = BallService.Settings.DefaultPos :: Vector3
 BallService.CurveCache = {} :: (any)
 
 local Players = game:GetService("Players")
@@ -43,19 +44,19 @@ local Signal = require(script:WaitForChild("Signal"))
 local FloatCurve = require(script:WaitForChild("Curve"))
 
 local OnStopSignal = Signal.new("OnStopSignal")
-local Rand = Random.new()
-
 BallService.OnStop = OnStopSignal
 
+local Rand = Random.new()
+local past_tick = tick()
 local BallObject = nil
 
 -- Public
 
-function BallService:init()
+function BallService:init(): ()
 	if RunService:IsServer() then
 		if not script:FindFirstChild("Ball") then
 			-- Create Default Ball Object
-			local newBall = Instance.new("Part", script)
+			local newBall: Part = Instance.new("Part", script)
 			newBall.Name = self.Settings.BallName
 			newBall.Size = self.Settings.DefaultSize
 			newBall.Massless = self.Settings.Massless
@@ -76,8 +77,8 @@ function BallService:init()
 			Speed.Changed:Connect(function()
 				Speed.Value = math.min(2.5e2, Speed.Value)
 			end)
-			
-			BallObject = script:WaitForChild("Ball"):Clone()
+
+			BallObject = script:WaitForChild(self.Settings.BallName):Clone()
 			BallObject.Parent = self.Settings.BallPlace
 		end
 		if BallObject:WaitForChild("Speed").Value <= 0 then BallObject:WaitForChild("Speed").Value = self.Settings.DefaultSpeed end
@@ -87,7 +88,7 @@ function BallService:init()
 	end
 end
 
-function BallService:Set(options: typeof(BallService.Settings))
+function BallService:Set(options: typeof(BallService.Settings)): ()
 	if not RunService:IsServer() then error("This function only for Server-side", 2) end
 	for i,v in pairs(options) do
 		if self.Settings[i] ~= nil and i ~= "isPlaying" then
@@ -107,7 +108,16 @@ function BallService:Set(options: typeof(BallService.Settings))
 	end
 end
 
-function BallService:SetTarget(objectTarget: Model)
+function BallService:SetPast(objectPast: Model): ()
+	if not RunService:IsServer() then error("This function only for Server-side", 2) end
+	if not objectPast then error("Missing argument #1", 2) end
+	if not objectPast:IsA("Model") then error("Expected argument #1 as Model.", 2) end
+	if not BallObject then error("Couldn't find Ball Object.", 2) end
+	if not BallObject:FindFirstChild("Target") then error("Failed to set past.", 2) end
+	BallObject:WaitForChild("Past").Value = objectPast
+end
+
+function BallService:SetTarget(objectTarget: Model): ()
 	if not RunService:IsServer() then error("This function only for Server-side", 2) end
 	if not objectTarget then error("Missing argument #1", 2) end
 	if not objectTarget:IsA("Model") then error("Expected argument #1 as Model.", 2) end
@@ -117,21 +127,21 @@ function BallService:SetTarget(objectTarget: Model)
 	self:UpdatePlayers()
 end
 
-function BallService:SetEasingDirection(easingDirection: Enum.EasingDirection)
+function BallService:SetEasingDirection(easingDirection: Enum.EasingDirection): ()
 	if not RunService:IsServer() then error("This function only for Server-side", 2) end
 	if not easingDirection then error("Missing argument #1", 2) end
 	if typeof(easingDirection) ~= "EnumItem" then error(`Expected type of argument #1 as EnumItem got {typeof(easingDirection)}.`, 2) end
 	self.Settings.EasingDirection = easingDirection
 end
 
-function BallService:SetEasingStyle(easingStyle: Enum.EasingStyle)
+function BallService:SetEasingStyle(easingStyle: Enum.EasingStyle): ()
 	if not RunService:IsServer() then error("This function only for Server-side", 2) end
 	if not easingStyle then error("Missing argument #1", 2) end
 	if typeof(easingStyle) ~= "EnumItem" then error(`Expected type of argument #1 as EnumItem got {typeof(easingStyle)}.`, 2) end
 	self.Settings.EasingStyle = easingStyle
 end
 
-function BallService:SetSpeed(speed: number)
+function BallService:SetSpeed(speed: number): ()
 	if not RunService:IsServer() then error("This function only for Server-side", 2) end
 	if not speed then error("Missing argument #1", 2) end
 	if typeof(speed) ~= "number" then error(`Expected type of argument #1 as number got {typeof(speed)}.`, 2) end
@@ -141,12 +151,12 @@ function BallService:SetSpeed(speed: number)
 	BallObject:WaitForChild("Speed").Value = speed
 end
 
-function BallService:SetColor(color: Color3)
+function BallService:SetColor(color: Color3): ()
 	if not BallObject then error("Service not initialized yet.", 2) end
 	BallObject.Color = color
 end
 
-function BallService:UpdatePlayers()
+function BallService:UpdatePlayers(): ()
 	table.clear(self._Players)
 	for _, plr in pairs(Players:GetPlayers()) do
 		if plr and plr.Character and not table.find(self._Players, plr.Character) then
@@ -159,7 +169,7 @@ function BallService:UpdatePlayers()
 	self.isPlayable = (#self._Players >= self.Settings.MinimumPlayers)
 end
 
-function BallService:Reset()
+function BallService:Reset(): ()
 	BallObject.Value.Value = 3
 	RunService:UnbindFromPostSimulation("PlayBall")
 	BallObject.Target.Value = nil
@@ -170,7 +180,7 @@ function BallService:Reset()
 	BallObject.Value.Value = 0
 end
 
-function BallService:Play()
+function BallService:Play(): ()
 	if not RunService:IsServer() then error("This function only for Server-side", 2) end
 	if not BallObject then error("Service not initialized yet.", 2) end
 	self:UpdatePlayers()
@@ -187,6 +197,11 @@ end
 
 function BallService:IsPlaying(): boolean
 	return self.Settings.isPlaying
+end
+
+function BallService:GetPast(): Model
+	if not BallObject then error("Service not initialized yet.", 2) end
+	return BallObject.Past.Value
 end
 
 function BallService:GetTarget(): Model
@@ -209,11 +224,11 @@ if RunService:IsServer() then
 		while (BallObject.Target.Value == previousObject) do
 			BallObject.Target.Value = BallService._Players[math.random(1, #BallService._Players)]
 		end
-		return (BallObject.Target.Value and true or false)
+		return (BallObject.Target.Value and true or false) :: boolean
 	end
 
 	function getTarget(): boolean
-		return (BallObject and getRandom(BallObject.Target.Value) or false)
+		return (BallObject and getRandom(BallObject.Target.Value) or false) :: boolean
 	end
 	
 	function CurveSimulation(basePos: BasePart, targetPos: BasePart): Vector3?
@@ -225,7 +240,8 @@ if RunService:IsServer() then
 		end
 	end
 
-	function FollowTarget(delta: number)
+	function FollowTarget(delta: number): ()
+		past_tick = tick()
 		if BallService.Settings.isPlaying and BallObject then
 			if BallObject.Target.Value and BallObject.Target.Value.PrimaryPart and BallService:IsTargetAlive(BallObject.Target.Value) then
 				if (BallObject.Position-BallObject.Target.Value.PrimaryPart.Position).Magnitude < BallService.Settings.MinMagnitudeToKill then
@@ -235,16 +251,20 @@ if RunService:IsServer() then
 				end
 				if BallService.Settings.UseCurve then
 					if BallService.CurveCache and BallService.CurveCache[2] ~= nil then
-						if (BallService.CurveCache[2].TotalTime-((tick()-BallService.CurveCache[1]) % BallService.CurveCache[2].TotalTime)) <= 0.01 then
-							BallService.PreviousPos = BallObject.Position
-							BallService.CurveCache[1] = tick()
-						end
 						BallService.CurveCache[2]:UpdateCurves()
-						local toPos = BallService.CurveCache[2]:Tween((tick()-BallService.CurveCache[1]) % BallService.CurveCache[2].TotalTime, BallService.Settings.EasingStyle, BallService.Settings.EasingDirection) :: Vector3
-						if toPos and BallObject.Position ~= toPos then
-							BallObject.Position = toPos
+						if (BallService.CurveCache[2].TotalTime-((past_tick-BallService.CurveCache[1]) % BallService.CurveCache[2].TotalTime)) <= 0.005 then
+							TweenService:Create(BallObject, TweenInfo.new(0.05, BallService.Settings.EasingStyle, BallService.Settings.EasingDirection), { Position = BallObject.Target.Value.PrimaryPart.Position }):Play()
+							BallService.CurveCache[1] = tick()
+							BallService.PreviousPos = BallObject.Past.Value.PrimaryPart.Position
+							BallService.CurveCache[2]:SetSpeed(BallService.Settings.DefaultSpeed*(BallService.Settings.CurveBoost*2)) -- double the speed
+							BallService.CurveCache[2]:UpdateCurves()
 						else
-							BallObject.Position = BallObject.Target.Value.PrimaryPart.Position
+							local toPos = BallService.CurveCache[2]:Tween((tick()-BallService.CurveCache[1]) % BallService.CurveCache[2].TotalTime, BallService.Settings.EasingStyle, BallService.Settings.EasingDirection) :: Vector3
+							if toPos and BallObject.Position ~= toPos then
+								BallObject.Position = toPos
+							else
+								BallObject.Position = BallObject.Target.Value.PrimaryPart.Position
+							end
 						end
 					end
 				else
@@ -269,7 +289,11 @@ if RunService:IsServer() then
 				BallService.PreviousPos = BallObject.Position
 				if BallService.Settings.UseCurve then
 					BallService.CurveCache[1] = tick()
-					BallService.CurveCache[2] = FloatCurve.new({BallObject, CurveSimulation(BallObject, BallObject.Target.Value.PrimaryPart), BallObject.Target.Value.PrimaryPart}, BallObject.Speed.Value*20) :: (any)
+					if BallObject.Past.Value then
+						BallService.CurveCache[2] = FloatCurve.new({BallObject.Past.Value, CurveSimulation(BallObject, BallObject.Target.Value.PrimaryPart), BallObject.Target.Value.PrimaryPart}, BallObject.Speed.Value*BallService.Settings.CurveBoost) :: (any)
+					else
+						BallService.CurveCache[2] = FloatCurve.new({BallObject, CurveSimulation(BallObject, BallObject.Target.Value.PrimaryPart), BallObject.Target.Value.PrimaryPart}, BallObject.Speed.Value*BallService.Settings.CurveBoost) :: (any)
+					end
 				end
 				RunService:BindToPostSimulation("PlayBall", 1, FollowTarget)
 			elseif BallObject.Value.Value == 1 then
