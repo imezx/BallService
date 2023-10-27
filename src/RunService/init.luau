@@ -1,8 +1,9 @@
 --!strict
+--!native
 --!optimize 2
 -- Better RunService Module by Eternity_Devs
 -- Note: Parallel not supported here for Bind Service.
--- v1.0
+-- v1.1
 
 local Service = game:GetService("RunService")
 local Assert = require(script:WaitForChild("SafeAssert"))
@@ -55,7 +56,7 @@ function RunService:UnbindToRenderStep(name: string): RBXScriptConnection
 	return Service:UnbindFromRenderStep(name)
 end
 
-function RunService:BindToHeartbeat(name: string, piority: number, func: (...any) -> ())
+function RunService:BindToHeartbeat(name: string, piority: number, func: (...any) -> ()): ()
 	if not BindMap["Heartbeat"] then
 		BindMap["Heartbeat"] = {}
 	end
@@ -74,7 +75,7 @@ function RunService:BindToHeartbeat(name: string, piority: number, func: (...any
 	table.insert(BindMapPiority["Heartbeat"][piority], name)
 end
 
-function RunService:BindToPostSimulation(name: string, piority: number, func: (...any) -> ())
+function RunService:BindToPostSimulation(name: string, piority: number, func: (...any) -> ()): ()
 	if not BindMap["PostSimulation"] then
 		BindMap["PostSimulation"] = {}
 	end
@@ -93,21 +94,21 @@ function RunService:BindToPostSimulation(name: string, piority: number, func: (.
 	table.insert(BindMapPiority["PostSimulation"][piority], name)
 end
 
-function RunService:UnbindFromPostSimulation(name: string)
+function RunService:UnbindFromPostSimulation(name: string): ()
 	if BindMap["PostSimulation"] and BindMap["PostSimulation"][name] and BindMapPiority["PostSimulation"][BindMap["PostSimulation"][name].idx] and table.find(BindMapPiority["PostSimulation"][BindMap["PostSimulation"][name].idx], name) then
-		BindMapPiority["PostSimulation"][BindMap["PostSimulation"][name].idx][table.find(BindMapPiority["PostSimulation"][BindMap["PostSimulation"][name].idx], name)] = nil
+		BindMapPiority["PostSimulation"][BindMap["PostSimulation"][name].idx][table.find(BindMapPiority["PostSimulation"][BindMap["PostSimulation"][name].idx], name) or 0] = nil
 		BindMap["PostSimulation"][name] = nil
 	end
 end
 
-function RunService:UnbindFromHeartbeat(name: string)
+function RunService:UnbindFromHeartbeat(name: string): ()
 	if BindMap["Heartbeat"] and BindMap["Heartbeat"][name] and BindMapPiority["Heartbeat"][BindMap["Heartbeat"][name].idx] and table.find(BindMapPiority["Heartbeat"][BindMap["Heartbeat"][name].idx], name) then
-		BindMapPiority["Heartbeat"][BindMap["Heartbeat"][name].idx][table.find(BindMapPiority["Heartbeat"][BindMap["Heartbeat"][name].idx], name)] = nil
+		BindMapPiority["Heartbeat"][BindMap["Heartbeat"][name].idx][table.find(BindMapPiority["Heartbeat"][BindMap["Heartbeat"][name].idx], name) or 0] = nil
 		BindMap["Heartbeat"][name] = nil
 	end
 end
 
-function RunService:Silent(option: boolean)
+function RunService:Silent(option: boolean): ()
 	isSilent = option
 end
 
