@@ -39,8 +39,8 @@ BallService.Settings = {
 		Vector3Curve = false, -- default: false, if false it use quadratic curve logic
 		CubicCurve = false, -- default: false, if false it use quadratic curve else cubic curve.
 		CurveBoost = 20, -- default: 20, speed up curve so it dont took long
-		MaxHeightCurve = 10, -- default: 20
-		MinHeightCurve = -10, -- default: 0
+		MaxHeightCurve = 20, -- default: 20
+		MinHeightCurve = 0, -- default: 0
 	},
 	Test = {
 		TestDummy = game:GetService("Workspace"), -- change the default with TestMode enabled.
@@ -331,12 +331,12 @@ end
 
 function BallService:UpdatePlayers(): ()
 	table.clear(self._Players)
-	for _, plr in pairs(Players:GetPlayers()) do
-		if plr and plr.Character and not table.find(self._Players, plr.Character) then
+	for _, plr: Player in pairs(Players:GetPlayers()) do
+		if plr and plr.Character and self:IsTargetAlive(plr.Character) and not table.find(self._Players, plr.Character) then
 			table.insert(self._Players, plr.Character)
 		end
 	end
-	if self.Settings.Test.TestMode and self.Settings.Test.TestDummy and self.Settings.Test.TestDummy:IsA("Model") and self.Settings.Test.TestDummy.Parent ~= nil and not table.find(self._Players, self.Settings.Test.TestDummy) then
+	if self.Settings.Test.TestMode and self.Settings.Test.TestDummy and self.Settings.Test.TestDummy:IsA("Model") and self.Settings.Test.TestDummy.Parent ~= nil and self:IsTargetAlive(self.Settings.Test.TestDummy) and not table.find(self._Players, self.Settings.Test.TestDummy) then
 		table.insert(self._Players, self.Settings.Test.TestDummy)
 	end
 	self.isPlayable = (#self._Players >= self.Settings.MinimumPlayers)
@@ -445,9 +445,9 @@ if RunService:IsServer() then
 		if (not basePos) or (not targetPos) then return end
 		if BallService.Settings.Curve.Vector3Curve then
 			if (basePos.Position-targetPos.Position).X < 0 and (basePos.Position-targetPos.Position).Z < 0 then
-				return ((targetPos.Position-basePos.Position)/(Rand:NextNumber(1, 2)))+Vector3.new(Rand:NextInteger(BallService.Settings.Curve.MinHeightCurve, BallService.Settings.MaxHeightCurve), Rand:NextInteger(BallService.Settings.Curve.MinHeightCurve, BallService.Settings.MaxHeightCurve), Rand:NextInteger(BallService.Settings.Curve.MinHeightCurve, BallService.Settings.MaxHeightCurve))
+				return ((targetPos.Position-basePos.Position)/(Rand:NextNumber(1, 2)))+Vector3.new(Rand:NextInteger(BallService.Settings.Curve.MinHeightCurve, BallService.Settings.Curve.MaxHeightCurve), Rand:NextInteger(BallService.Settings.Curve.MinHeightCurve, BallService.Settings.Curve.MaxHeightCurve), Rand:NextInteger(BallService.Settings.Curve.MinHeightCurve, BallService.Settings.Curve.MaxHeightCurve))
 			else
-				return ((basePos.Position-targetPos.Position)/(Rand:NextNumber(1, 2)))+Vector3.new(Rand:NextInteger(BallService.Settings.Curve.MinHeightCurve, BallService.Settings.MaxHeightCurve), Rand:NextInteger(BallService.Settings.Curve.MinHeightCurve, BallService.Settings.MaxHeightCurve), Rand:NextInteger(BallService.Settings.Curve.MinHeightCurve, BallService.Settings.MaxHeightCurve))
+				return ((basePos.Position-targetPos.Position)/(Rand:NextNumber(1, 2)))+Vector3.new(Rand:NextInteger(BallService.Settings.Curve.MinHeightCurve, BallService.Settings.Curve.MaxHeightCurve), Rand:NextInteger(BallService.Settings.Curve.MinHeightCurve, BallService.Settings.Curve.MaxHeightCurve), Rand:NextInteger(BallService.Settings.Curve.MinHeightCurve, BallService.Settings.Curve.MaxHeightCurve))
 			end
 		elseif alpha then
 			local resultPos: Vector3
@@ -491,12 +491,13 @@ if RunService:IsServer() then
 							if (BallService.CurveCache[2].TotalTime-((past_tick-BallService.CurveCache[1]) % BallService.CurveCache[2].TotalTime)) <= 0.005 then
 								TweenService:Create(BallObject, TweenInfo.new(0.05, BallService.Settings.EasingStyle, BallService.Settings.EasingDirection), { Position = BallObject.Target.Value.PrimaryPart.Position }):Play()
 								BallService.CurveCache[1] = tick()
-								BallService.PreviousPos = BallObject.Past.Value.PrimaryPart.Position
+								BallService.PreviousPos = BallObject.Past.Value.PrimaryPart
 								BallService.CurveCache[2]:SetSpeed(BallService.Settings.Speed.DefaultSpeed*(BallService.Settings.Curve.CurveBoost*2)) -- double the speed
 								BallService.CurveCache[2]:UpdateCurves()
 							else
 								local toPos = BallService.CurveCache[2]:Tween((past_tick-BallService.CurveCache[1]) % BallService.CurveCache[2].TotalTime, BallService.Settings.EasingStyle, BallService.Settings.EasingDirection) :: Vector3
 								if toPos and BallObject.Position ~= toPos then
+									BallObject.Position = toPos
 								else
 									BallObject.Position = BallObject.Target.Value.PrimaryPart.Position
 								end
