@@ -54,4 +54,4 @@ function Signal:Once(callback: (...any) -> ())
 	end)
 end
 
-return Signal :: typeof(Signal)
+return table.freeze(Signal)

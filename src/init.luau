@@ -1,5 +1,5 @@
 -- BallService Module by Eternity_Devs
--- version 2.2.0
+-- version 2.3.0
 --!native
 --!strict
 local BallService = {}
@@ -54,11 +54,13 @@ BallService.Settings = {
 	Silent = false, -- default: false (make warns be silent from RunService Module)
 	isPlaying = false, -- DO NOT CHANGE THIS (default: false)
 }
+BallService._Exception = {} :: (any)
 BallService._Players = {} :: (any)
 BallService.alpha = BallService.Settings.Speed.alpha :: number
 BallService.isPlayable = false :: boolean
 BallService.PreviousPos = BallService.Settings.DefaultPos :: Vector3
 BallService.CurveCache = {} :: (any)
+BallService.BallHits = 0 :: number
 
 local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
@@ -67,7 +69,11 @@ local Signal = require(script:WaitForChild("Signal"))
 local FloatCurve = require(script:WaitForChild("Curve"))
 
 local OnStopSignal = Signal.new("OnStopSignal")
+local OnTargetDiedSignal = Signal.new("OnTargetDiedSignal")
+local OnBallHitSignal = Signal.new("OnBallHitSignal")
 BallService.OnStop = OnStopSignal
+BallService.OnTargetDied = OnTargetDiedSignal
+BallService.OnBallHit = OnBallHitSignal
 
 local Rand = Random.new()
 local past_tick = tick()
@@ -138,8 +144,10 @@ function BallService:init(): ()
 			self.alpha = self.Settings.Speed.alpha
 		end
 		if BallObject:WaitForChild("Speed").Value <= 0 then BallObject:WaitForChild("Speed").Value = self.Settings.Speed.DefaultSpeed end
-	elseif self.Settings.Locate and not self.Settings.Locate:FindFirstChild(self.Settings.Name) then
-		repeat task.wait() until self.Settings.Locate:FindFirstChild(self.Settings.Name) -- wait from server initialize
+	elseif self.Settings.Locate then
+		if not self.Settings.Locate:FindFirstChild(self.Settings.Name) then
+			repeat task.wait() until self.Settings.Locate:FindFirstChild(self.Settings.Name) -- wait from server initialize
+		end
 		BallObject = self.Settings.Locate:WaitForChild(self.Settings.Name, 5) -- timeout 5 seconds
 	end
 end
@@ -297,7 +305,7 @@ function BallService:SetEffects(particleEmitters: Folder): ()
 	end
 end
 
-function BallService:SetTest(onTest: boolean, testDummy: Model?)
+function BallService:SetTest(onTest: boolean, testDummy: Model?): ()
 	if not RunService:IsServer() then error("This function only for Server-side", 2) end
 	if not BallObject then error("Service not initialized yet.", 2) end
 	if typeof(onTest) ~= "boolean" then error(`Expected type of argument #1 as boolean got {typeof(onTest)}.`, 2) end
@@ -309,14 +317,14 @@ function BallService:SetTest(onTest: boolean, testDummy: Model?)
 	end
 end
 
-function BallService:Anchor(option: boolean)
+function BallService:Anchor(option: boolean): ()
 	if not RunService:IsServer() then error("This function only for Server-side", 2) end
 	if not BallObject then error("Couldn't find Ball Object.", 2) end
 	if typeof(option) ~= "boolean" then error(`Expected type of argument #1 as boolean got {typeof(option)}.`, 2) end
 	BallObject.Anchored = option
 end
 
-function BallService:Freeze()
+function BallService:Freeze(): ()
 	if not RunService:IsServer() then error("This function only for Server-side", 2) end
 	if not BallObject then error("Couldn't find Ball Object.", 2) end
 	self:Stop()
@@ -331,9 +339,11 @@ end
 
 function BallService:UpdatePlayers(): ()
 	table.clear(self._Players)
-	for _, plr: Player in pairs(Players:GetPlayers()) do
-		if plr and plr.Character and self:IsTargetAlive(plr.Character) and not table.find(self._Players, plr.Character) then
-			table.insert(self._Players, plr.Character)
+	if #Players:GetPlayers() > 0 then
+		for _, plr: Player in pairs(Players:GetPlayers()) do
+			if plr and plr.Character and not self:IsExcept(plr) and self:IsTargetAlive(plr.Character) and not table.find(self._Players, plr.Character) then
+				table.insert(self._Players, plr.Character)
+			end
 		end
 	end
 	if self.Settings.Test.TestMode and self.Settings.Test.TestDummy and self.Settings.Test.TestDummy:IsA("Model") and self.Settings.Test.TestDummy.Parent ~= nil and self:IsTargetAlive(self.Settings.Test.TestDummy) and not table.find(self._Players, self.Settings.Test.TestDummy) then
@@ -342,9 +352,39 @@ function BallService:UpdatePlayers(): ()
 	self.isPlayable = (#self._Players >= self.Settings.MinimumPlayers)
 end
 
+function BallService:IsExcept(player: Player): boolean?
+	if not RunService:IsServer() then error("This function only for Server-side", 2) end
+	if not player:IsA("Player") then error(`Expected type of argument #1 as Player got {player.ClassName}.`, 2) end
+	return (table.find(self._Exception, player) ~= nil and true or false)
+end
+
+function BallService:Excepts(players: {Player}): ()
+	if not RunService:IsServer() then error("This function only for Server-side", 2) end
+	if typeof(players) ~= "table" then error(`Expected type of argument #1 as table got {typeof(players)}.`, 2) end
+	if #players == 0 then error("table can't be empty.", 2) end
+	for _, player: Player in pairs(players) do
+		if player:IsA("Player") and not table.find(self._Exception, player) then
+			table.insert(self._Exception, player)
+		end
+	end
+end
+
+function BallService:RemoveExcepts(players: {Player}): ()
+	if not RunService:IsServer() then error("This function only for Server-side", 2) end
+	if typeof(players) ~= "table" then error(`Expected type of argument #1 as table got {typeof(players)}.`, 2) end
+	if #players == 0 then error("table can't be empty.", 2) end
+	for _, player: Player in pairs(players) do
+		if player:IsA("Player") and table.find(self._Exception, player) then
+			table.remove(self._Exception, table.find(self._Exception, player))
+		end
+	end
+end
+
 function BallService:Reset(): ()
 	BallObject.Value.Value = 3
 	RunService:UnbindFromPostSimulation("PlayBall")
+	self.BallHits = 0
+	BallObject.Past.Value = nil
 	BallObject.Target.Value = nil
 	BallObject.Speed.Value = self.Settings.Speed.DefaultSpeed
 	if self.Settings.Curve.UseCurve then
@@ -481,7 +521,16 @@ if RunService:IsServer() then
 			if BallObject.Target.Value and BallObject.Target.Value.PrimaryPart and BallService:IsTargetAlive(BallObject.Target.Value) then
 				if (BallObject.Position-BallObject.Target.Value.PrimaryPart.Position).Magnitude < BallService.Settings.MinMagnitudeToKill then
 					BallObject.Target.Value.Humanoid.Health -= BallService.Settings.DamageToTarget
+					if BallObject.Target.Value and not BallService:IsTargetAlive(BallObject.Target.Value) then
+						OnTargetDiedSignal:Fire(BallObject.Target.Value)
+					end
 					BallService:Reset()
+					return
+				end
+				-- Ball is just respawned
+				if not BallObject.Past.Value then
+					BallService.alpha += (delta/BallService.Settings.Speed.ThrottlingDelta)
+					TweenService:Create(BallObject, TweenInfo.new(math.min(BallService.Settings.Speed.MaxTweenSpeed, math.max(BallService.Settings.Speed.MinTweenSpeed, (BallService.alpha/BallObject.Speed.Value)/BallService.Settings.Speed.ThrottlingSpeed)), BallService.Settings.EasingStyle, BallService.Settings.EasingDirection), { Position = BallObject.Target.Value.PrimaryPart.Position }):Play()
 					return
 				end
 				if BallService.Settings.Curve.UseCurve then
@@ -517,6 +566,9 @@ if RunService:IsServer() then
 					TweenService:Create(BallObject, TweenInfo.new(math.min(BallService.Settings.Speed.MaxTweenSpeed, math.max(BallService.Settings.Speed.MinTweenSpeed, (BallService.alpha/BallObject.Speed.Value)/BallService.Settings.Speed.ThrottlingSpeed)), BallService.Settings.EasingStyle, BallService.Settings.EasingDirection), { Position = BallObject.Target.Value.PrimaryPart.Position }):Play()
 				end
 			else
+				if BallObject.Target.Value and not BallService:IsTargetAlive(BallObject.Target.Value) then
+					OnTargetDiedSignal:Fire(BallObject.Target.Value)
+				end
 				BallService:Reset()
 			end
 		end
@@ -547,6 +599,8 @@ if RunService:IsServer() then
 				end
 				RunService:BindToPostSimulation("PlayBall", 1, FollowTarget)
 			elseif BallObject.Value.Value == 1 then
+				BallService.BallHits += 1
+				OnBallHitSignal:Fire(BallService.BallHits)
 				if BallService.Settings.Curve.UseCurve then
 					BallService.alpha = 0
 				end

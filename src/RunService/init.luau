@@ -15,6 +15,8 @@ local RunService = {
 	PostSimulation = Service.PostSimulation,
 	PreAnimation = Service.PreAnimation,
 	PreRender = Service.PreRender,
+	BindToRenderStep = Service.BindToRenderStep,
+	UnbindFromRenderStep = Service.UnbindFromRenderStep,
 }
 
 type BindMapType = {
@@ -36,24 +38,16 @@ local BindMap: BindMapType = {}
 local BindMapPiority: BindMapPiorityType = {}
 local isSilent: boolean = false
 
+function RunService:IsStudio(): boolean
+	return Service:IsStudio()
+end
+
 function RunService:IsServer(): boolean
 	return Service:IsServer()
 end
 
 function RunService:IsClient(): boolean
 	return Service:IsClient()
-end
-
-function RunService:IsStudio(): boolean
-	return Service:IsStudio()
-end
-
-function RunService:BindToRenderStep(...: any): RBXScriptConnection
-	return Service:BindToRenderStep(...)
-end
-
-function RunService:UnbindToRenderStep(name: string): RBXScriptConnection
-	return Service:UnbindFromRenderStep(name)
 end
 
 function RunService:BindToHeartbeat(name: string, piority: number, func: (...any) -> ()): ()
