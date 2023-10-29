@@ -1,5 +1,5 @@
 -- BallService Module by Eternity_Devs
--- version 2.3.0
+-- version 2.4.0
 --!native
 --!strict
 local BallService = {}
@@ -135,10 +135,10 @@ function BallService:init(): ()
 			BallObject.Parent = self.Settings.Locate
 
 			BallObject:WaitForChild("Speed"):GetPropertyChangedSignal("Value"):Connect(function()
-				BallObject.Speed.Value = math.min(BallService.Settings.Speed.MaxSpeed, BallObject.Speed.Value)
+				BallObject.Speed.Value = math.min(self.Settings.Speed.MaxSpeed, BallObject.Speed.Value)
 			end)
 		end
-		if BallService.Settings.Curve.UseCurve then
+		if self.Settings.Curve.UseCurve then
 			self.alpha = 0
 		else
 			self.alpha = self.Settings.Speed.alpha
@@ -309,11 +309,11 @@ function BallService:SetTest(onTest: boolean, testDummy: Model?): ()
 	if not RunService:IsServer() then error("This function only for Server-side", 2) end
 	if not BallObject then error("Service not initialized yet.", 2) end
 	if typeof(onTest) ~= "boolean" then error(`Expected type of argument #1 as boolean got {typeof(onTest)}.`, 2) end
-	BallService.Settings.Test.TestMode = onTest
+	self.Settings.Test.TestMode = onTest
 	if testDummy then
 		if not testDummy:IsA("Model") then error(`Expected type of argument #2 as Model got {testDummy.ClassName}.`, 2) end
 		if not testDummy.PrimaryPart then error("TestDummy Model must have PrimaryPart attached.", 2) end
-		BallService.Settings.Test.TestDummy = testDummy
+		self.Settings.Test.TestDummy = testDummy
 	end
 end
 
@@ -426,20 +426,65 @@ function BallService:GetTarget(): Model
 	return BallObject.Target.Value
 end
 
+function BallService:GetSpeed(): number
+	if not BallObject then error("Service not initialized yet.", 2) end
+	return BallObject.Speed.Value
+end
+
 function BallService:IsTargetAlive(object: any): boolean
 	if object and object:FindFirstChild("Humanoid") then return (object.Humanoid.Health > 0) end return false
 end
 
 if RunService:IsServer() then
 	-- Internal
+	function getRandomPlayers(data): any
+		return (data and data[math.random(1, #data)] or nil)
+	end
+
+	function getBunchPlayersfromLookVector(character: Model): any
+		if #BallService._Players < BallService.Settings.MinimumPlayers then return end
+		if not character then return end
+		if not character:IsA("Model") then return end
+		if not character.PrimaryPart then return end
+		local lookVector = character.PrimaryPart.CFrame.LookVector
+		local objects = {}
+		for _, object: Model in pairs(BallService._Players) do
+			if not object.PrimaryPart then continue end
+			local getPlayerByObject = Players:GetPlayerFromCharacter(object)
+			if getPlayerByObject then
+				if BallService:IsExcept(getPlayerByObject) then continue end
+			end
+			if object and object ~= character and object.PrimaryPart and character.PrimaryPart then
+				if (object.PrimaryPart.Position - character.PrimaryPart.Position).Unit:Dot(lookVector) > 0 then
+					table.insert(objects, object)
+				end
+			end
+		end
+		return objects
+	end
+
 	function getRandom(previousObject): boolean
 		if #BallService._Players < BallService.Settings.MinimumPlayers then
 			BallService:Reset()
 			BallService:Stop()
 			return false
 		end
-		while (BallObject.Target.Value == previousObject) do
-			BallObject.Target.Value = BallService._Players[math.random(1, #BallService._Players)]
+		if not BallObject.Past.Value then -- ball is just spawned
+			while (BallObject.Target.Value == previousObject) do
+				BallObject.Target.Value = getRandomPlayers(BallService._Players)
+			end
+		else
+			local getBunch = getBunchPlayersfromLookVector(BallObject.Past.Value)
+			if getBunch and #getBunch > 0 then
+				while (BallObject.Target.Value == previousObject) do
+					BallObject.Target.Value = getRandomPlayers(getBunch)
+				end
+			else
+				-- failed and get random players instead
+				while (BallObject.Target.Value == previousObject) do
+					BallObject.Target.Value = getRandomPlayers(BallService._Players)
+				end
+			end
 		end
 		return (BallObject.Target.Value and true or false) :: boolean
 	end
